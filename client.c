@@ -61,5 +61,5 @@ int main(int argc, char *argv[]) {
         }
     }
     printf("Sending final message to %d\n", pid);
-    kill(pid, SIGQUIT);
+    kill(pid, SIGQUIT); 
 }

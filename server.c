@@ -8,7 +8,6 @@
  * et détermine la langue probable du message reçu en analysant la fréquence des lettres.
  */
 
-<<<<<<< HEAD
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -155,16 +154,3 @@ int main() {
     }
     return 0;
 }
-=======
-#include <stdio.h>
-#include <unistd.h>
-
-void main() {
-    pid_t pid = getpid();
-    printf("PID: %d\n", pid);
-
-}
-
-
-
->>>>>>> 1b2e4673abf496fca0b0849480315e7808c30cfb
