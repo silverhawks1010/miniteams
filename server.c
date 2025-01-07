@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 
 // Alphabet
 char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -34,14 +36,44 @@ double probabilities[4][26] = {
     {12.53, 1.42, 4.68, 5.86, 13.68, 0.69, 1.01, 0.70, 6.25, 0.44, 0.01, 4.97, 3.15, 6.71, 8.68, 2.51, 0.88, 6.87, 7.98, 4.63, 3.93, 0.90, 0.01, 0.22, 0.90, 0.52}
 };
 
-/** @brief Compteur de bits reçus */
-int bits = 0;
-/** @brief Caractère en cours de construction */
-char mots = 0;
-/** @brief Buffer pour stocker le message reçu */
-char message[256]; // Buffer to store the message
-/** @brief Index courant dans le buffer de message */
-int message_index = 0;
+/**
+ * @brief Structure pour stocker les mots caractéristiques de chaque langue
+ */
+struct LanguageKeywords {
+    const char* lang;
+    const char* keywords[10];
+};
+
+/**
+ * @brief Mots caractéristiques pour chaque langue
+ */
+struct LanguageKeywords keywords[] = {
+    {"Français", {"le", "la", "les", "un", "une", "des", "est", "et", "en", "dans"}},
+    {"Anglais", {"the", "is", "are", "and", "to", "of", "in", "for", "with", "on"}},
+    {"Allemand", {"der", "die", "das", "und", "ist", "in", "den", "von", "zu", "für"}},
+    {"Espagnol", {"el", "la", "los", "las", "un", "una", "es", "en", "de", "por"}}
+};
+
+/**
+ * @brief Vérifie si un mot est présent dans le message
+ */
+int contains_word(const char* message, const char* word) {
+    char* msg_lower = strdup(message);
+    char* word_lower = strdup(word);
+    
+    // Convertir en minuscules
+    for(int i = 0; msg_lower[i]; i++) {
+        msg_lower[i] = tolower(msg_lower[i]);
+    }
+    for(int i = 0; word_lower[i]; i++) {
+        word_lower[i] = tolower(word_lower[i]);
+    }
+    
+    int result = strstr(msg_lower, word_lower) != NULL;
+    free(msg_lower);
+    free(word_lower);
+    return result;
+}
 
 /**
  * @brief Détermine la langue probable d'un message
@@ -53,11 +85,13 @@ int message_index = 0;
  * pour déterminer la langue la plus probable.
  */
 char* getlangue(char *message) {
-    double min_diff = 999999;  // On cherche la plus petite différence
+    double min_diff = 999999;
     int index = 0;
     int len = 0;
     int letter_count[26] = {0};
+    double scores[4] = {0}; // Scores pour chaque langue
 
+    // Compter les lettres
     for(int i = 0; message[i] != '\0'; i++) {
         char c = message[i];
         if(c >= 'a' && c <= 'z') {
@@ -71,29 +105,55 @@ char* getlangue(char *message) {
 
     if(len == 0) return languages[0];
 
-
+    // 1. Calcul basé sur la fréquence des lettres (50% du score final)
     double observed_freq[26];
     for(int i = 0; i < 26; i++) {
         observed_freq[i] = (double)letter_count[i] / len * 100.0;
     }
 
-    //printf("Scores de différence (plus petit = meilleur):\n");
     for (int i = 0; i < 4; i++) {
         double diff_sum = 0;
         for (int j = 0; j < 26; j++) {
             double diff = observed_freq[j] - probabilities[i][j];
             diff_sum += diff * diff;
         }
-        //printf("%s: %f\n", languages[i], diff_sum);
-        
-        if (diff_sum < min_diff) {
-            min_diff = diff_sum;
-            index = i;
+        scores[i] = -diff_sum; // Score négatif car plus la différence est petite, meilleur est le score
+    }
+
+    // 2. Recherche de mots caractéristiques (50% du score final)
+    for(int i = 0; i < 4; i++) {
+        int word_matches = 0;
+        for(int j = 0; j < 10; j++) {
+            if(contains_word(message, keywords[i].keywords[j])) {
+                word_matches++;
+            }
+        }
+        scores[i] += word_matches * 50.0; // Bonus pour chaque mot trouvé
+    }
+
+    // Trouver la langue avec le meilleur score
+    double max_score = scores[0];
+    int best_index = 0;
+    //printf("\nScores par langue:\n");
+    for(int i = 0; i < 4; i++) {
+        //printf("%s: %.2f\n", languages[i], scores[i]);
+        if(scores[i] > max_score) {
+            max_score = scores[i];
+            best_index = i;
         }
     }
 
-    return languages[index];
+    return languages[best_index];
 }
+
+/** @brief Compteur de bits reçus */
+int bits = 0;
+/** @brief Caractère en cours de construction */
+char mots = 0;
+/** @brief Buffer pour stocker le message reçu */
+char message[256]; // Buffer to store the message
+/** @brief Index courant dans le buffer de message */
+int message_index = 0;
 
 /**
  * @brief Gestionnaire de signaux pour la réception des messages
