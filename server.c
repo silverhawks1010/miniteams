@@ -21,6 +21,11 @@ char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /** @brief Tableau des langues supportées */
 char *languages[] = {"Français", "Anglais", "Allemand", "Espagnol"};
 
+// def du fichier Log  
+#define LOG_FILE "server_log.txt"  
+
+
+
 /**
  * @brief Tableau des fréquences d'apparition des lettres pour chaque langue
  * Source : https://fr.wikipedia.org/wiki/Fr%C3%A9quence_d%27apparition_des_lettres
@@ -172,6 +177,35 @@ volatile pid_t client_pid = -1;
  * ensuite ajoutés au message. À la réception de SIGQUIT,
  * le message complet est affiché et sa langue est déterminée.
  */
+
+
+
+FILE *log_file;
+
+
+void load_previous_messages() {
+    log_file = fopen(LOG_FILE, "a+");  // Ouvre le fichier en lecture et éc>    
+    if (!log_file) {
+        perror("Erreur lors de l'ouverture du fichier log");
+        exit(EXIT_FAILURE);
+    }
+
+    // Lire les messages et les afficher
+    char line[256];
+    printf("Messages précédents :\n");
+    while (fgets(line, sizeof(line), log_file)) {
+        printf("%s", line);
+    }
+    printf("\n");
+}
+
+void save_message(const char *msg) {
+    if (log_file) {
+        fprintf(log_file, "%s\n", msg);
+        fflush(log_file);
+    }
+}
+
 void handler(int sig, siginfo_t *info, void *context) {
     if (sig == SIGUSR1 || sig == SIGUSR2) {
         // Obtenir le PID du client depuis siginfo
@@ -205,6 +239,7 @@ void handler(int sig, siginfo_t *info, void *context) {
             printf("Langue détectée : %s\n", getlangue(message));
             
             // Réinitialisation complète
+            save_message(message);
             memset(message, 0, sizeof(message));
             message_length = 0;
             bits = 0;
@@ -227,7 +262,7 @@ int main() {
     sa.sa_sigaction = handler;
     sa.sa_flags = SA_SIGINFO;  // Pour obtenir les informations supplémentaires sur le signal
     sigemptyset(&sa.sa_mask);
-    
+    load_previous_messages();
     if (sigaction(SIGUSR1, &sa, NULL) == -1 ||
         sigaction(SIGUSR2, &sa, NULL) == -1 ||
         sigaction(SIGQUIT, &sa, NULL) == -1) {
@@ -240,6 +275,6 @@ int main() {
     while(1) {
         pause();
     }
-    
+    fclose(log_file); l
     return 0;
 }
