@@ -184,13 +184,13 @@ FILE *log_file;
 
 
 void load_previous_messages() {
-    log_file = fopen(LOG_FILE, "a+");  // Ouvre le fichier en lecture et éc>    
+    log_file = fopen(LOG_FILE, "a+");  // Ouvre le fichier en lecture et écriture
     if (!log_file) {
         perror("Erreur lors de l'ouverture du fichier log");
         exit(EXIT_FAILURE);
     }
 
-    // Lire les messages et les afficher
+    // Lire et afficher les messages précédents
     char line[256];
     printf("Messages précédents :\n");
     while (fgets(line, sizeof(line), log_file)) {
@@ -199,12 +199,22 @@ void load_previous_messages() {
     printf("\n");
 }
 
-void save_message(const char *msg) {
+
+
+void save_message(pid_t client_pid, const char *msg) {
     if (log_file) {
-        fprintf(log_file, "%s\n", msg);
+        // Ajouter l'horodatage
+        time_t now = time(NULL);
+        struct tm *local_time = localtime(&now);
+        char timestamp[20];
+        strftime(timestamp, sizeof(timestamp), "%d-%m-%Y %H:%M:%S", local_time);
+
+        // Enregistrer le message dans le log
+        fprintf(log_file, "[%s] Client PID: %d, Message complet reçu : %s\n", timestamp, client_pid, msg);
         fflush(log_file);
     }
 }
+
 
 void handler(int sig, siginfo_t *info, void *context) {
     if (sig == SIGUSR1 || sig == SIGUSR2) {
@@ -237,10 +247,7 @@ void handler(int sig, siginfo_t *info, void *context) {
             message[message_length] = '\0';
             printf("\nMessage reçu du client PID %d : %s\n", client_pid, message);
             printf("Langue détectée : %s\n", getlangue(message));
-            if (log_file) {
-                    fprintf(log_file, "Client PID: %d, Message complet reçu : %s\n", client_pid, message);
-                    fflush(log_file);
-            }            
+            save_message(client_pid, message);           
             memset(message, 0, sizeof(message));
             message_length = 0;
             bits = 0;
