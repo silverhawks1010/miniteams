@@ -146,18 +146,22 @@ char* getlangue(char *message) {
     return languages[best_index];
 }
 
-/** @brief Compteur de bits reçus */
-int bits = 0;
-/** @brief Caractère en cours de construction */
-char mots = 0;
 /** @brief Buffer pour stocker le message reçu */
-char message[256]; // Buffer to store the message
+char message[1024];
 /** @brief Index courant dans le buffer de message */
-int message_index = 0;
+volatile int message_length = 0;
+/** @brief Compteur de bits reçus */
+volatile int bits = 0;
+/** @brief Caractère en cours de construction */
+volatile unsigned char mots = 0;
+/** @brief PID du client pour l'accusé de réception */
+volatile pid_t client_pid = -1;
 
 /**
  * @brief Gestionnaire de signaux pour la réception des messages
  * @param sig Signal reçu (SIGUSR1, SIGUSR2 ou SIGQUIT)
+ * @param info Informations supplémentaires sur le signal
+ * @param context Contexte de l'appel
  *
  * Cette fonction traite les signaux reçus :
  * - SIGUSR1 : bit 1
@@ -168,29 +172,46 @@ int message_index = 0;
  * ensuite ajoutés au message. À la réception de SIGQUIT,
  * le message complet est affiché et sa langue est déterminée.
  */
-void handler(int sig) {
-    if (sig == SIGQUIT) {
-        printf("Final message: %s\n", message);
-        printf("Langue: %s\n", getlangue(message));
-        message_index = 0;
-        bits = 0;
-        mots = 0;
-        memset(message, 0, sizeof(message)); 
-        return;
+void handler(int sig, siginfo_t *info, void *context) {
+    if (sig == SIGUSR1 || sig == SIGUSR2) {
+        // Obtenir le PID du client depuis siginfo
+        client_pid = info->si_pid;
+        
+        // Traitement du bit reçu
+        if (sig == SIGUSR1) {
+            mots = (mots << 1) | 1;
+        } else {
+            mots = (mots << 1) | 0;
+        }
+        bits++;
+
+        // Envoyer l'accusé de réception avec un petit délai
+        if (client_pid > 0) {
+            usleep(100);  // Petit délai avant l'envoi de l'ACK
+            kill(client_pid, SIGUSR1);
+        }
+
+        if (bits == 8) {
+            if (message_length < sizeof(message) - 1) {
+                message[message_length++] = mots;
+            }
+            bits = 0;
+            mots = 0;
+        }
+    } else if (sig == SIGQUIT) {
+        if (message_length > 0) {
+            message[message_length] = '\0';
+            printf("\nMessage reçu : %s\n", message);
+            printf("Langue détectée : %s\n", getlangue(message));
+            
+            // Réinitialisation complète
+            memset(message, 0, sizeof(message));
+            message_length = 0;
+            bits = 0;
+            mots = 0;
+            client_pid = -1;
+        }
     }
-    if (sig == SIGUSR1) {
-        mots |= (1 << (7 - bits));
-    } else if (sig == SIGUSR2) {
-        mots &= ~(1 << (7 - bits));
-    }
-    bits++;
-    if (bits == 8) {
-        message[message_index++] = mots; 
-        message[message_index] = '\0';
-        bits = 0;
-        mots = 0;
-    }
-    fflush(stdout);
 }
 
 /**
@@ -201,16 +222,24 @@ void handler(int sig) {
  * pour recevoir des messages.
  */
 int main() {
-      printf("Server PID: %d\n", getpid());
-      printf("Waiting for signals...\n");
+    // Configuration des gestionnaires de signaux avec sigaction
+    struct sigaction sa;
+    sa.sa_sigaction = handler;
+    sa.sa_flags = SA_SIGINFO;  // Pour obtenir les informations supplémentaires sur le signal
+    sigemptyset(&sa.sa_mask);
+    
+    if (sigaction(SIGUSR1, &sa, NULL) == -1 ||
+        sigaction(SIGUSR2, &sa, NULL) == -1 ||
+        sigaction(SIGQUIT, &sa, NULL) == -1) {
+        perror("sigaction");
+        return 1;
+    }
 
-    signal(SIGUSR1, handler);
-    signal(SIGUSR2, handler);
-    signal(SIGQUIT, handler);
-
-
+    printf("Server PID: %d\n", getpid());
+    
     while(1) {
         pause();
     }
+    
     return 0;
 }

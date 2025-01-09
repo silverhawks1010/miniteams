@@ -30,6 +30,16 @@ void char_to_binary(char c, char *binary) {
     binary[8] = '\0';
 }
 
+// Variable globale pour l'accusé de réception
+volatile sig_atomic_t ack_received = 0;
+
+// Handler pour recevoir l'accusé de réception
+void ack_handler(int signo) {
+    if (signo == SIGUSR1) {
+        ack_received = 1;
+    }
+}
+
 /**
  * @brief Point d'entrée du programme
  * @param argc Nombre d'arguments
@@ -45,21 +55,62 @@ void char_to_binary(char c, char *binary) {
  * Un signal SIGQUIT est envoyé à la fin du message.
  */
 int main(int argc, char *argv[]) {
-	int pid = atoi(argv[1]);
-	char *message = argv[2];
+    if (argc != 3) {
+        printf("Usage: %s PID MESSAGE\n", argv[0]);
+        return 1;
+    }
+
+    // Configuration du handler pour l'accusé de réception
+    struct sigaction sa;
+    sa.sa_handler = ack_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+        perror("sigaction");
+        return 1;
+    }
+
+    int pid = atoi(argv[1]);
+    char *message = argv[2];
+    int timeout_count;
+
+    printf("Envoi du message au serveur (PID: %d)\n", pid);
 
     for (int i = 0; i < strlen(message); i++) {
         char binary[9];
         char_to_binary(message[i], binary);
+        
         for (int j = 0; j < 8; j++) {
+            ack_received = 0;
+            timeout_count = 0;
+            
+            // Envoi du bit
             if (binary[j] == '1') {
                 kill(pid, SIGUSR1);
             } else {
                 kill(pid, SIGUSR2);
             }
-            usleep(1000);
+
+            // Attente de l'accusé de réception avec timeout
+            while (!ack_received && timeout_count < 1000) {
+                usleep(100);
+                timeout_count++;
+            }
+
+            if (!ack_received) {
+                printf("Erreur: Pas de réponse du serveur\n");
+                return 1;
+            }
+
+            // Petit délai entre chaque bit pour stabilité
+            usleep(100);
         }
     }
-    printf("Sending final message to %d\n", pid);
-    kill(pid, SIGQUIT); 
+
+    printf("Message envoyé, envoi du signal de fin...\n");
+    usleep(1000);  // Attendre un peu avant d'envoyer le signal de fin
+    kill(pid, SIGQUIT);
+    printf("Terminé.\n");
+    
+    return 0;
 }
