@@ -235,11 +235,12 @@ void handler(int sig, siginfo_t *info, void *context) {
     } else if (sig == SIGQUIT) {
         if (message_length > 0) {
             message[message_length] = '\0';
-            printf("\nMessage reçu : %s\n", message);
+            printf("\nMessage reçu du client PID %d : %s\n", client_pid, message);
             printf("Langue détectée : %s\n", getlangue(message));
-            
-            // Réinitialisation complète
-            save_message(message);
+            if (log_file) {
+                    fprintf(log_file, "Client PID: %d, Message complet reçu : %s\n", client_pid, message);
+                    fflush(log_file);
+            }            
             memset(message, 0, sizeof(message));
             message_length = 0;
             bits = 0;
